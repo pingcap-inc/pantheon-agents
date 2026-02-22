@@ -71,9 +71,9 @@ The pantheon branch is a long running task, it will take  1h - 2h, and won't stu
 ## Pantheon — Base Agent Runtime Info
 
 **TiPG Base Branch**
-- Branch ID: 019c449e-fa97-7fec-a29d-5dd36962448e
-- Branch Name: explore-019c449e-7ce6f1ea
-- Branch Display Name: humble-llama-2f1aa
+- Branch ID: 019c84ec-bafa-7b72-b3fc-4969ea7e263b
+- Branch Name: explore-019c84ec-1be857ca
+- Branch Display Name: outstanding-iguana-e85bf
 
 **TiPG Project**
 - Project ID: 019c0495-f77a-7b6c-ade0-6b59c6654617
