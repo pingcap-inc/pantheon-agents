@@ -121,6 +121,29 @@ pr_head_branch = <extracted or None>
 review_cycle_count = 0  # Increment each time Step 4.1 executes
 ```
 
+## Workflow Observability
+
+The orchestrator (you, following this skill) **must post a status comment on the PR (or issue, if PR doesn't exist yet) after every step completes**. This ensures the workflow is fully traceable from the thread alone.
+
+**Status comment format:**
+
+```bash
+gh pr comment {pr_number} --body-file - <<'STATUS_EOF'
+<!-- pantheon-resolve-status:step-{step_name}:cycle-{review_cycle_count} -->
+
+**Pantheon Resolve Workflow — {step_name}** (Cycle {review_cycle_count})
+
+- **Branch ID**: `{branch_id}`
+- **Agent**: {agent_type}
+- **Outcome**: {outcome summary}
+- **Next**: {what happens next}
+STATUS_EOF
+```
+
+For Step 1 (before PR exists in `new_issue` mode): post on the issue instead, then switch to the PR for subsequent steps.
+
+---
+
 ## Workflow
 
 ### Step 1: Implement Solution
@@ -265,12 +288,18 @@ REASON=<why the design doesn't work; requires re-design>
 
 1. Parse output
 2. Set `last_fix_branch_id = <branch_id from Step 1>`
+3. **Post orchestrator status comment** (on issue if `new_issue` and no PR yet, on PR if available):
+   - Step: `implement`
+   - Branch ID: `last_fix_branch_id`
+   - Agent: `claude_code`
+   - Outcome: `IMPLEMENTATION_SUCCESS` / `GH_AUTH_EXPIRED` / `IMPLEMENTATION_BLOCKED`
+   - Next: what follows
 
-3. If `IMPLEMENTATION_SUCCESS`:
+4. If `IMPLEMENTATION_SUCCESS`:
    - Extract and store `pr_url`, `pr_number`, `pr_head_branch`
    - Proceed to Step 2
 
-4. If `GH_AUTH_EXPIRED`:
+5. If `GH_AUTH_EXPIRED`:
    - Start ONE recovery exploration from `last_fix_branch_id`:
      ```
      Do NOT change code. Use existing local commits only.
@@ -364,10 +393,17 @@ IMPORTANT: Do NOT post PR comments or create GitHub issues in this step.
 
 1. Parse output
 2. Do NOT update `last_fix_branch_id` (Review is read-only)
-3. If `NO_P0_P1`:
+3. **Post orchestrator status comment** on the PR:
+   - Step: `review`
+   - Branch ID: the review branch
+   - Agent: `codex`
+   - Outcome: `NO_P0_P1` or `P0_P1_FINDINGS` (with count of findings)
+   - CI status: pass/fail/not-checked
+   - Next: what follows
+4. If `NO_P0_P1`:
    - Post workflow completion comment (see "Workflow Completion Comment" below)
    - **Workflow complete** (no blocking issues found)
-4. If `P0_P1_FINDINGS`: Extract findings, proceed to Step 3
+5. If `P0_P1_FINDINGS`: Extract findings, proceed to Step 3
 
 ---
 
@@ -500,10 +536,16 @@ END_IN_SCOPE_P0_P1
 
 1. Parse output
 2. Do NOT update `last_fix_branch_id` (Verify is read-only)
-3. If `NO_IN_SCOPE_P0_P1`:
+3. **Post orchestrator status comment** on the PR:
+   - Step: `verify`
+   - Branch ID: the verify branch
+   - Agent: `codex`
+   - Outcome: `NO_IN_SCOPE_P0_P1` or `IN_SCOPE_P0_P1` (with triage breakdown: N fix / N defer / N invalid)
+   - Next: what follows
+4. If `NO_IN_SCOPE_P0_P1`:
    - Post workflow completion comment (see "Workflow Completion Comment" below)
    - **Workflow complete** (all issues are deferred or invalid)
-4. If `IN_SCOPE_P0_P1`: Extract in-scope issues, proceed to Step 4
+5. If `IN_SCOPE_P0_P1`: Extract in-scope issues, proceed to Step 4
 
 ---
 
@@ -579,8 +621,15 @@ RETRY_PUSH_BRANCH={pr_head_branch}
 
 1. Set `last_fix_branch_id = <branch_id from this Fix run>`
 2. Increment `review_cycle_count += 1`
+3. **Post orchestrator status comment** on the PR:
+   - Step: `fix`
+   - Branch ID: `last_fix_branch_id`
+   - Agent: `claude_code`
+   - Cycle: `{review_cycle_count}`
+   - Outcome: `FIX_SUCCESS` or `GH_AUTH_EXPIRED`
+   - Next: re-review
 
-3. If `GH_AUTH_EXPIRED`:
+4. If `GH_AUTH_EXPIRED`:
    - Start recovery exploration from `last_fix_branch_id`:
      ```
      Do NOT change code. Use existing local commits.
@@ -589,7 +638,7 @@ RETRY_PUSH_BRANCH={pr_head_branch}
      ```
    - Wait for completion
 
-4. Proceed to 4.2
+5. Proceed to 4.2
 
 **4.2: Re-Review**
 

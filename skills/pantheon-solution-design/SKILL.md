@@ -76,6 +76,29 @@ design_status = None  # APPROVED, CONSENSUS, or NO_ACTION_NEEDED
 design_comment_url = None  # URL of the GitHub comment containing the final design
 ```
 
+## Workflow Observability
+
+The orchestrator (you, following this skill) **must post a status comment on the GitHub issue after every step completes**. This ensures the workflow is fully traceable from the issue thread alone.
+
+**Status comment format:**
+
+```bash
+gh issue comment {issue_number} --body-file - <<'STATUS_EOF'
+<!-- pantheon-design-status:step-{step_name}:round-{round_number} -->
+
+**Pantheon Design Workflow — {step_name}** (Round {round_number}/{max_rounds})
+
+- **Branch ID**: `{branch_id}`
+- **Agent**: {agent_type}
+- **Outcome**: {outcome summary}
+- **Next**: {what happens next}
+STATUS_EOF
+```
+
+**Why**: If a Pantheon agent fails to post its own comment (e.g., `gh` unavailable in sandbox), the orchestrator's status comment still provides a trace. After the review step, the orchestrator must also **verify** the reviewer posted its comment — if not, note it in the status.
+
+---
+
 ## Workflow
 
 ### Step 1: Design Draft (Claude)
@@ -170,13 +193,19 @@ VERDICT=NEED_DESIGN_REVIEW
 
 1. Parse output
 2. Set `design_branch_id = <branch_id from this step>`
-3. If `VERDICT=NO_ACTION_NEEDED`:
+3. **Post orchestrator status comment** on the issue:
+   - Step: `design-draft`
+   - Branch ID: `design_branch_id`
+   - Agent: `claude_code`
+   - Outcome: `VERDICT` value
+   - Next: what follows (review or stop)
+4. If `VERDICT=NO_ACTION_NEEDED`:
    - Set `design_status = "NO_ACTION_NEEDED"`
    - **Stop workflow** — output:
      ```
      DESIGN_STATUS=NO_ACTION_NEEDED
      ```
-4. If `VERDICT=NEED_DESIGN_REVIEW`:
+5. If `VERDICT=NEED_DESIGN_REVIEW`:
    - Extract `SOLUTION_DESIGN` block
    - Set `round_number = 1`
    - Proceed to Step 2
@@ -221,17 +250,21 @@ Review this design against the actual codebase with scientific rigor:
 7. **Patch/workaround detection**: Does the design patch symptoms instead of fixing root cause? REJECT if so.
 8. **Test strategy**: Is the test strategy realistic and sufficient?
 
-=== POST REVIEW TO GITHUB ===
+=== POST REVIEW TO GITHUB (MANDATORY) ===
 
-Post your review as a comment on the issue:
+You MUST post your review as a comment on the issue. This is a CRITICAL requirement — the workflow depends on this comment being visible in the issue thread for observability. If `gh` fails, retry once. If it still fails, include the full review text in your output so the orchestrator can post it.
 
 gh issue comment {issue_number} --body-file - <<'REVIEW_EOF'
 <!-- pantheon-design-review:round-{round_number} -->
 
 ## Design Review (Round {round_number})
 
-<your review findings, formatted as markdown>
+**Verdict**: DESIGN_APPROVED or DESIGN_NEEDS_REVISION
+
+<your detailed review findings, formatted as markdown>
 REVIEW_EOF
+
+After posting, output the comment URL if available.
 
 === OUTPUT ===
 
@@ -251,7 +284,17 @@ END_REVISION_FEEDBACK
 **Wait for completion**, then:
 
 1. Parse output
-2. If `DESIGN_APPROVED`:
+2. **Verify reviewer posted its comment**: Check the issue for a comment containing `<!-- pantheon-design-review:round-{round_number} -->`.
+   - If found: good, note the comment URL.
+   - If NOT found: the reviewer failed to post. Post the review content yourself (extracted from `branch_output`) as the review comment, so the thread remains complete.
+3. **Post orchestrator status comment** on the issue:
+   - Step: `design-review`
+   - Branch ID: the review branch
+   - Agent: `codex`
+   - Outcome: `DESIGN_APPROVED` or `DESIGN_NEEDS_REVISION`
+   - Review comment posted: yes/no (and whether orchestrator had to post it)
+   - Next: what follows
+4. If `DESIGN_APPROVED`:
    - Post the final approved design comment (see "Final Design Comment" below)
    - Set `design_status = "APPROVED"`
    - **Exit workflow** with output:
@@ -259,7 +302,7 @@ END_REVISION_FEEDBACK
      DESIGN_STATUS=APPROVED
      DESIGN_COMMENT_URL=<url of the final design comment>
      ```
-3. If `DESIGN_NEEDS_REVISION`:
+5. If `DESIGN_NEEDS_REVISION`:
    - Extract revision feedback
    - If `round_number >= max_rounds`: go to "Final Round — Ship Consensus"
    - Otherwise: proceed to Step 3
@@ -367,7 +410,14 @@ VERDICT=NEED_DESIGN_REVIEW
 1. Parse output
 2. Set `design_branch_id = <branch_id from this step>`
 3. Extract revised `SOLUTION_DESIGN` block
-4. Go back to **Step 2** (Design Review) for Codex to review the revision
+4. **Post orchestrator status comment** on the issue:
+   - Step: `design-revision`
+   - Branch ID: `design_branch_id`
+   - Agent: `claude_code`
+   - Round: `{round_number}`
+   - Outcome: revision completed
+   - Next: sending to reviewer
+5. Go back to **Step 2** (Design Review) for Codex to review the revision
 
 ---
 
